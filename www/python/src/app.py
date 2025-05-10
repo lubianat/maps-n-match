@@ -18,10 +18,9 @@ import yaml
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
-
 HERE = pathlib.Path(__file__).parent
 DATA = HERE / "data"
-INAT_FILE = DATA / "inat_mix_n_match_2025_05_01.txt"
+INAT_FILE = DATA / "catalog_3900.tsv"
 # Load catalog info from YAML file
 CATALOG_INFO_FILE = DATA / "catalog_info.yml"
 CATALOG_INFO = {}
@@ -49,10 +48,11 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 @lru_cache(maxsize=1)
-def load_catalog_entries() -> List[Dict[str, Any]]:
+def load_catalog_entries(catalog_number) -> List[Dict[str, Any]]:
     """Parse TSV once per process → list[dict]."""
     rows: List[Dict[str, Any]] = []
-    with INAT_FILE.open(encoding="utf-8") as fh:
+    catalog_file = DATA / f"catalog_{catalog_number}.tsv"
+    with catalog_file.open(encoding="utf-8") as fh:
         reader = csv.DictReader(
             (ln.lstrip("#") for ln in fh),
             delimiter="\t",
@@ -77,12 +77,14 @@ def load_catalog_entries() -> List[Dict[str, Any]]:
     return rows
 
 
-def nearby_entries(lat: float, lon: float, radius_km: float) -> List[Dict[str, Any]]:
+def nearby_entries(
+    lat: float, lon: float, radius_km: float, catalog_number
+) -> List[Dict[str, Any]]:
     """Return catalog entries within *radius_km* of (lat, lon)."""
     lat, lon = float(lat), float(lon)
     return [
         e
-        for e in load_catalog_entries()
+        for e in load_catalog_entries(catalog_number)
         if _haversine(lat, lon, e["lat"], e["lng"]) <= radius_km
     ]
 
@@ -118,6 +120,7 @@ def fetch_images_for_qs(qs: List[str]) -> Dict[str, str]:
 @app.route("/")
 def home():
     catalogs = CATALOG_INFO
+    print(CATALOG_INFO)
     return render_template("index.html", catalogs=catalogs)
 
 
@@ -142,7 +145,9 @@ def map_view():
     show_filter = request.args.get("show_matched", "").lower()  # "", "yes", "no"
 
     # ------------- Pull nearby entries -------------
-    entries = nearby_entries(lat, lng, max_distance_km)
+    entries = nearby_entries(
+        lat, lng, max_distance_km, catalog_number=catalog_meta["id"]
+    )
 
     # Optional filtering: matched-only or unmatched-only
     if show_filter == "yes":

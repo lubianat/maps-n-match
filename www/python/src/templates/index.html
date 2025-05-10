@@ -59,8 +59,8 @@
           <div class="form-group">
             <label for="catalog">Select a catalog:</label><br>
             <select id="catalog" name="catalog" class="form-control">
-              {% for catalog in catalogs %}
-              <option value="{{ catalog.id }}">{{ catalog.name}}</option>
+              {% for catalog, value in catalogs.items() %}
+              <option value="{{ value.id }}">{{ value.name}}</option>
               {% endfor %}
             </select>
 
