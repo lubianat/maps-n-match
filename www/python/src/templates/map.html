@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <style>
+    .leaflet-div-icon {
+      background: transparent;
+      border: none;
+    }
+  </style>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+  <link rel="icon" type="image/png" href="/static/icon.svg" />
+
+  
+</head>
+
+<body>
+
+  {% include '_navbar.html' %}
+
+  <div id="mapid" style="height: 700px; width: 80%; margin: 0 auto;"></div>
+  <script>  
+  {% include '_map_generator.js.jinja' %}
+  </script>
+  
+  {% include '_footer.html' %}
+
+
+</body>
+
+</html>
