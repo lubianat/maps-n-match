@@ -14,13 +14,19 @@ from flask import Flask, render_template, request, abort
 from SPARQLWrapper import SPARQLWrapper, JSON
 from wdcuration import lookup_multiple_ids
 
+import yaml
+
 # ── configuration ─────────────────────────────────────────────────────────────
 
-HERE = pathlib.Path(__file__)
 
-INAT_FILE = HERE.parent /   "inat_mix_n_match_2025_05_01.txt"
-
-print(INAT_FILE)
+HERE = pathlib.Path(__file__).parent
+DATA = HERE / "data"
+INAT_FILE = DATA / "inat_mix_n_match_2025_05_01.txt"
+# Load catalog info from YAML file
+CATALOG_INFO_FILE = DATA / "catalog_info.yml"
+CATALOG_INFO = {}
+with open(CATALOG_INFO_FILE, "r", encoding="utf-8") as f:
+    CATALOG_INFO = yaml.safe_load(f)
 
 EARTH_R_KM = 6371.0088  # mean Earth radius (km)
 
@@ -88,6 +94,7 @@ def fetch_images_for_qs(qs: List[str]) -> Dict[str, str]:
         return images
 
     CHUNK = 400
+    # TODO -- Refactor this to use wdcuration
     for i in range(0, len(qs), CHUNK):
         batch = qs[i : i + CHUNK]
         sparql.setQuery(
@@ -110,23 +117,9 @@ def fetch_images_for_qs(qs: List[str]) -> Dict[str, str]:
 # ── routes ───────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
-    catalogs = [
-        {
-            "name": "iNaturalist",
-            "id": "inat",
-        }
-    ]
+    catalogs = CATALOG_INFO
     return render_template("index.html", catalogs=catalogs)
 
-
-# Constants can live at module level so they aren’t recreated on every request
-CATALOG_INFO = {
-    "inat": {
-        "name": "iNaturalist",
-        "id": "inat",
-        "property": "P7471",
-    },
-}
 
 @app.route("/map")
 def map_view():
@@ -140,12 +133,13 @@ def map_view():
         abort(400, "lat and lng parameters are required and must be numeric")
 
     catalog_key = request.args.get("catalog", "inat")
+    print(CATALOG_INFO)
     catalog_meta = CATALOG_INFO.get(catalog_key)
     if catalog_meta is None:
         abort(400, f"Unknown catalog '{catalog_key}'")
 
     max_distance_km = float(request.args.get("dist", 25))
-    show_filter = request.args.get("show_matched", "").lower()   # "", "yes", "no"
+    show_filter = request.args.get("show_matched", "").lower()  # "", "yes", "no"
 
     # ------------- Pull nearby entries -------------
     entries = nearby_entries(lat, lng, max_distance_km)
@@ -171,15 +165,15 @@ def map_view():
     # ------------- Build payload for the template -------------
     data = [
         {
-            "locId":       e["entry_id"],
-            "locName":     e["name"],
-            "lat":         e["lat"],
-            "lng":         e["lng"],
-            "wikidata":    f"https://www.wikidata.org/wiki/{e['q']}" if e["q"] else None,
-            "image":       images_by_qid.get(e["q"]) if e["q"] else None,
+            "locId": e["entry_id"],
+            "locName": e["name"],
+            "lat": e["lat"],
+            "lng": e["lng"],
+            "wikidata": f"https://www.wikidata.org/wiki/{e['q']}" if e["q"] else None,
+            "image": images_by_qid.get(e["q"]) if e["q"] else None,
             "external_url": e["external_url"],
-            "external_id":  e["external_id"],
-            "mnm":         f"https://mix-n-match.toolforge.org/#/entry/{e['entry_id']}",
+            "external_id": e["external_id"],
+            "mnm": f"https://mix-n-match.toolforge.org/#/entry/{e['entry_id']}",
         }
         for e in entries
     ]

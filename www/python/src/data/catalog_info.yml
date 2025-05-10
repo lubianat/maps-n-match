@@ -1,0 +1,9 @@
+# catalogs.yaml
+"6860":
+    name: "BirdLife datazone (sites)"
+    property: "P13433"
+    id: 6860
+"3900":
+    name: "iNaturalist places"
+    property: "P7471"
+    id: 3900
