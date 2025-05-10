@@ -1,21 +1,5 @@
 """
 Mix-n-Match place explorer · Flask backend
------------------------------------------
-
-Reads the 2025-05-01 iNaturalist Mix-n-Match catalog TSV and serves a Leaflet
-map.  Markers are:
-
-    blue  – already linked to a Wikidata item (has q-id)
-    red   – not yet linked
-
-Query string parameters accepted by /map
-----------------------------------------
-lat=<float>           centre latitude          (required)
-lng=<float>           centre longitude         (required)
-dist=<float>          search radius in km      (default 25)
-show_matched=yes|no   'yes' → show only blue
-                      'no'  → show only red
-                      omitted → show all
 """
 
 from __future__ import annotations
@@ -28,12 +12,16 @@ from typing import List, Dict, Any
 
 from flask import Flask, render_template, request, abort
 from SPARQLWrapper import SPARQLWrapper, JSON
+from wdcuration import lookup_multiple_ids
 
 # ── configuration ─────────────────────────────────────────────────────────────
-INAT_FILE = pathlib.Path(
-    "/home/lubianat/Documents/wiki_related/inat-maps-n-match/www/python/src/"
-    "inat_mix_n_match_2025_05_01.txt"
-)
+
+HERE = pathlib.Path(__file__)
+
+INAT_FILE = HERE.parent /   "inat_mix_n_match_2025_05_01.txt"
+
+print(INAT_FILE)
+
 EARTH_R_KM = 6371.0088  # mean Earth radius (km)
 
 sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
@@ -55,7 +43,7 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 @lru_cache(maxsize=1)
-def load_inat_entries() -> List[Dict[str, Any]]:
+def load_catalog_entries() -> List[Dict[str, Any]]:
     """Parse TSV once per process → list[dict]."""
     rows: List[Dict[str, Any]] = []
     with INAT_FILE.open(encoding="utf-8") as fh:
@@ -78,7 +66,6 @@ def load_inat_entries() -> List[Dict[str, Any]]:
                     "name": (r["name"] or r["description"]).strip('" ') or "Unnamed",
                     "lat": lat,
                     "lng": lon,
-                    "q": r["q"].strip() if r.get("q") else None,
                 }
             )
     return rows
@@ -89,7 +76,7 @@ def nearby_entries(lat: float, lon: float, radius_km: float) -> List[Dict[str, A
     lat, lon = float(lat), float(lon)
     return [
         e
-        for e in load_inat_entries()
+        for e in load_catalog_entries()
         if _haversine(lat, lon, e["lat"], e["lng"]) <= radius_km
     ]
 
@@ -123,45 +110,78 @@ def fetch_images_for_qs(qs: List[str]) -> Dict[str, str]:
 # ── routes ───────────────────────────────────────────────────────────────────
 @app.route("/")
 def home():
-    return render_template("index.html")
+    catalogs = [
+        {
+            "name": "iNaturalist",
+            "id": "inat",
+        }
+    ]
+    return render_template("index.html", catalogs=catalogs)
 
+
+# Constants can live at module level so they aren’t recreated on every request
+CATALOG_INFO = {
+    "inat": {
+        "name": "iNaturalist",
+        "id": "inat",
+        "property": "P7471",
+    },
+}
 
 @app.route("/map")
 def map_view():
-    # -------------------------------- parameters
-    lat = request.args.get("lat")
-    lng = request.args.get("lng")
-    if lat is None or lng is None:
-        abort(400, "lat and lng parameters are required")
+    """Return a map page showing nearby catalogue entries,
+    optionally filtered by Wikidata-matching status."""
+    # ------------- Parse & validate query parameters -------------
+    try:
+        lat = float(request.args["lat"])
+        lng = float(request.args["lng"])
+    except (KeyError, ValueError):
+        abort(400, "lat and lng parameters are required and must be numeric")
 
-    dist = float(request.args.get("dist", 25))
-    show = request.args.get("show_matched", "").lower()  # "", "yes", "no"
+    catalog_key = request.args.get("catalog", "inat")
+    catalog_meta = CATALOG_INFO.get(catalog_key)
+    if catalog_meta is None:
+        abort(400, f"Unknown catalog '{catalog_key}'")
 
-    # -------------------------------- data slice
-    pts = nearby_entries(lat, lng, dist)
+    max_distance_km = float(request.args.get("dist", 25))
+    show_filter = request.args.get("show_matched", "").lower()   # "", "yes", "no"
 
-    if show == "yes":
-        pts = [p for p in pts if p["q"]]  # show only matched
-    elif show == "no":
-        pts = [p for p in pts if not p["q"]]  # show only unmatched
+    # ------------- Pull nearby entries -------------
+    entries = nearby_entries(lat, lng, max_distance_km)
 
-    # -------------------------------- optional images
-    images_by_q = fetch_images_for_qs([p["q"] for p in pts if p["q"]])
+    # Optional filtering: matched-only or unmatched-only
+    if show_filter == "yes":
+        entries = [e for e in entries if e.get("q")]
+    elif show_filter == "no":
+        entries = [e for e in entries if not e.get("q")]
 
-    # -------------------------------- payload for template
+    # ------------- Enrich with Wikidata Q-IDs -------------
+    property_id = catalog_meta["property"]
+    id_to_qid = lookup_multiple_ids(
+        list_of_ids=[e["external_id"] for e in entries],
+        wikidata_property=property_id,
+    )
+    for e in entries:
+        e["q"] = id_to_qid.get(e["external_id"], "")
+
+    # ------------- Grab images where we now have Q-IDs -------------
+    images_by_qid = fetch_images_for_qs([e["q"] for e in entries if e["q"]])
+
+    # ------------- Build payload for the template -------------
     data = [
         {
-            "locId": p["entry_id"],
-            "locName": p["name"],
-            "lat": p["lat"],
-            "lng": p["lng"],
-            "wikidata": f"https://www.wikidata.org/wiki/{p['q']}" if p["q"] else None,
-            "image": images_by_q.get(p["q"]) if p["q"] else None,
-            "external_url": p["external_url"],
-            "external_id": p["external_id"],
-            "mnm": f"https://mix-n-match.toolforge.org/#/entry/{p['entry_id']}",
+            "locId":       e["entry_id"],
+            "locName":     e["name"],
+            "lat":         e["lat"],
+            "lng":         e["lng"],
+            "wikidata":    f"https://www.wikidata.org/wiki/{e['q']}" if e["q"] else None,
+            "image":       images_by_qid.get(e["q"]) if e["q"] else None,
+            "external_url": e["external_url"],
+            "external_id":  e["external_id"],
+            "mnm":         f"https://mix-n-match.toolforge.org/#/entry/{e['entry_id']}",
         }
-        for p in pts
+        for e in entries
     ]
 
     return render_template("map.html", data=data, lat=lat, lng=lng)

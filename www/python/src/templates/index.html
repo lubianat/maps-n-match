@@ -39,34 +39,38 @@
   <div class="container">
     <div class="row">
       <div class="col">
-        <h1 class="my-4">Birdmaps: Select a location</h1>
+        <h1 class="my-4">Maps'n'match: a map-based Mix'n'match wrapper</h1>
 
-        <p class="lead">This tool helps you find and enrich birdwatching hotspots by connecting data from <a
-            href="https://www.wikidata.org/wiki/Q1273673" target="_blank">Wikidata</a> and <a href="https://ebird.org/"
-            target="_blank">eBird</a>. Follow the workflow below:</p>
+        <li>Select one of the available Mix'n'match catalogs.</li>
 
-        <ol>
-          <li>Select a location with coordinates (<a href="https://www.wikidata.org/wiki/Property:P625"
-              target="_blank">P625</a>) from Wikidata using the autocomplete below.</li>
-          <li>Find <a href="https://ebird.org/" target="_blank">eBird</a> hotspots around it by clicking "Submit".</li>
-          <li><span style="color:red;">Red hotspots</span> lack eBird hotspot IDs (<a
-              href="https://www.wikidata.org/wiki/Property:P5200" target="_blank">P5200</a>) on Wikidata.</li>
-          <li>You can copy the eBird hotspot ID (Ctrl/Cmd+C), search on Wikidata, and add it via the GUI to the correct
-            item.</li>
-          <li>After reloading, hotspots with IDs will appear <span style="color:blue;">blue</span> and show images (if
-            available on Wikidata).</li>
+        <li>Select a location with coordinates (<a href="https://www.wikidata.org/wiki/Property:P625"
+            target="_blank">P625</a>) from Wikidata using the autocomplete below.</li>
+        <li>Find entries in the catalog around it by clicking "Submit".</li>
+        <li><span style="color:red;">Red dots</span> lack a link from the ID to Wikidata.</li>
+        <li>You can copy the ID (Ctrl/Cmd+C), search on Wikidata, and add it via the GUI to the correct
+          item.</li>
+        <li>After reloading, connected entries will appear <span style="color:blue;">blue</span> and show images (if
+          available on Wikidata).</li>
         </ol>
 
         <hr>
 
         <form action="/map" method="get" onsubmit="return validateCoordinates();">
           <div class="form-group">
+            <label for="catalog">Select a catalog:</label><br>
+            <select id="catalog" name="catalog" class="form-control">
+              {% for catalog in catalogs %}
+              <option value="{{ catalog.id }}">{{ catalog.name}}</option>
+              {% endfor %}
+            </select>
+
+
             <label for="city">Location (select from Wikidata):</label><br>
             <input type="text" id="city" class="form-control" placeholder="Start typing...">
             <input type="hidden" id="lat" name="lat">
             <input type="hidden" id="lng" name="lng">
             <label for="dist">Search radius (in km):</label><br>
-            <input type="number" id="dist" name="dist" min="0" max="500" value="25"><br>
+            <input type="number" id="dist" name="dist" min="0" max="500" value="100"><br>
             <label>Show entries:</label><br>
             <div class="form-check form-check-inline">
               <input class="form-check-input" type="radio" name="show_matched" id="showAll" value="" checked>
