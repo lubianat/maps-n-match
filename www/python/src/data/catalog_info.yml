@@ -1,8 +1,4 @@
 # catalogs.yaml
-"6860":
-    name: "BirdLife datazone (sites)"
-    property: "P13433"
-    id: 6860
 "3900":
     name: "iNaturalist places"
     property: "P7471"
@@ -11,3 +7,11 @@
     name: "Skyscraper Center Buildings"
     property: "P1305"
     id: 106
+"221":
+    name: "GCatholic churches"
+    property: "P2971"
+    id: 221
+"4489":
+    name: "OpenWeatherMap city ID"
+    property: "P7197"
+    id: 4489
